@@ -4,7 +4,7 @@ A password generator web app that lets users create secure, customizable passwor
 
 ## Live Demo
 
-- **Live URL:** [add your GitHub Pages / Netlify link here]
+- **Live URL:** [ https://javidigayathri.github.io/password_Generator/]
 
 
 ## Project Description
