@@ -1,9 +1,3 @@
-// ---------------------------------------------
-// Keystone — password builder
-// Structured as a small object instead of loose
-// functions, and uses a "generate then verify"
-// approach rather than "guarantee then shuffle".
-// ---------------------------------------------
 
 const CATEGORY_POOLS = {
   chkUpper: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
@@ -27,7 +21,6 @@ const el = {
 
 let lastPassword = "";
 
-// --- Secure random number in [0, upperBound) using rejection sampling ---
 function randomIndex(upperBound) {
   const ceiling = Math.floor(256 / upperBound) * upperBound;
   const byte = new Uint8Array(1);
@@ -47,9 +40,6 @@ function activeCategoryIds() {
   return el.checkboxes.filter((box) => box.checked).map((box) => box.id);
 }
 
-// --- Core generation: build length-many characters by first picking
-//     a random *category*, then a random char within it, then verify
-//     every selected category actually appears at least once. ---
 function buildPassword(length, categoryIds) {
   const chars = [];
 
@@ -62,8 +52,7 @@ function buildPassword(length, categoryIds) {
   return chars.join("");
 }
 
-// If any selected category never got picked (possible with pure
-// randomness on short passwords), force one in at a random slot.
+
 function ensureAllCategoriesPresent(chars, categoryIds) {
   categoryIds.forEach((categoryId) => {
     const pool = CATEGORY_POOLS[categoryId];
@@ -75,7 +64,7 @@ function ensureAllCategoriesPresent(chars, categoryIds) {
   });
 }
 
-// --- Validation ---
+
 function validate(length, categoryIds) {
   if (categoryIds.length === 0) {
     return "Pick at least one character type.";
@@ -97,7 +86,7 @@ function clearFlag() {
   el.warnMsg.textContent = "";
 }
 
-// --- Strength meter ---
+
 function scoreStrength(password, categoryIds) {
   const poolSize = categoryIds.reduce((sum, id) => sum + CATEGORY_POOLS[id].length, 0);
   const bits = password.length * Math.log2(Math.max(poolSize, 2));
@@ -120,7 +109,6 @@ function paintMeter(score) {
   el.meterText.textContent = label;
 }
 
-// --- Event wiring ---
 el.lenInput.addEventListener("input", () => {
   el.lenDisplay.textContent = el.lenInput.value;
 });
