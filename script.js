@@ -1,162 +1,163 @@
+// ---------------------------------------------
+// Keystone — password builder
+// Structured as a small object instead of loose
+// functions, and uses a "generate then verify"
+// approach rather than "guarantee then shuffle".
+// ---------------------------------------------
 
-const passwordText = document.getElementById("passwordText");
-const copyBtn = document.getElementById("copyBtn");
-const copyToast = document.getElementById("copyToast");
-const lengthSlider = document.getElementById("lengthSlider");
-const lengthValue = document.getElementById("lengthValue");
-const generateBtn = document.getElementById("generateBtn");
-const errorText = document.getElementById("errorText");
-const gaugeNeedle = document.getElementById("gaugeNeedle");
-const gaugeArc = document.getElementById("gaugeArc");
-const gaugeLabel = document.getElementById("gaugeLabel");
-const tumblers = document.querySelectorAll(".tumbler");
-
-
-const CHAR_SETS = {
-  upper: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-  lower: "abcdefghijklmnopqrstuvwxyz",
-  numbers: "0123456789",
-  symbols: "!@#$%^&*()_+-=[]{}|;:,.<>?",
+const CATEGORY_POOLS = {
+  chkUpper: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+  chkLower: "abcdefghijklmnopqrstuvwxyz",
+  chkDigits: "0123456789",
+  chkSymbols: "!@#$%^&*()_+-=[]{};:,.<>?",
 };
 
-let currentPassword = "";
+const el = {
+  output: document.getElementById("outputField"),
+  copyBtn: document.getElementById("copyAction"),
+  copyMsg: document.getElementById("copyMsg"),
+  meterBar: document.getElementById("meterBar"),
+  meterText: document.getElementById("meterText"),
+  lenInput: document.getElementById("lenInput"),
+  lenDisplay: document.getElementById("lenDisplay"),
+  warnMsg: document.getElementById("warnMsg"),
+  buildBtn: document.getElementById("buildAction"),
+  checkboxes: Object.keys(CATEGORY_POOLS).map((id) => document.getElementById(id)),
+};
 
+let lastPassword = "";
 
-function getActiveOptions() {
-  return Array.from(tumblers)
-    .filter((t) => t.classList.contains("active"))
-    .map((t) => t.dataset.option);
-}
-
-tumblers.forEach((tumbler) => {
-  tumbler.addEventListener("click", () => {
-    const nowActive = !tumbler.classList.contains("active");
-    tumbler.classList.toggle("active", nowActive);
-    tumbler.setAttribute("aria-checked", String(nowActive));
-    clearError();
-  });
-});
-
-
-lengthSlider.addEventListener("input", () => {
-  lengthValue.textContent = lengthSlider.value;
-});
-
-
-function secureRandomInt(maxExclusive) {
-  const range = 256 - (256 % maxExclusive);
-  const buf = new Uint8Array(1);
-  let value;
+// --- Secure random number in [0, upperBound) using rejection sampling ---
+function randomIndex(upperBound) {
+  const ceiling = Math.floor(256 / upperBound) * upperBound;
+  const byte = new Uint8Array(1);
+  let n;
   do {
-    crypto.getRandomValues(buf);
-    value = buf[0];
-  } while (value >= range);
-  return value % maxExclusive;
+    crypto.getRandomValues(byte);
+    n = byte[0];
+  } while (n >= ceiling);
+  return n % upperBound;
 }
 
-function pickRandomChar(charset) {
-  return charset[secureRandomInt(charset.length)];
+function randomChar(pool) {
+  return pool.charAt(randomIndex(pool.length));
 }
 
-function secureShuffle(arr) {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = secureRandomInt(i + 1);
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
+function activeCategoryIds() {
+  return el.checkboxes.filter((box) => box.checked).map((box) => box.id);
 }
 
+// --- Core generation: build length-many characters by first picking
+//     a random *category*, then a random char within it, then verify
+//     every selected category actually appears at least once. ---
+function buildPassword(length, categoryIds) {
+  const chars = [];
 
-function clearError() {
-  errorText.textContent = "";
-}
-
-function showError(message) {
-  errorText.textContent = message;
-  generateBtn.classList.remove("shake");
-  void generateBtn.offsetWidth;
-  generateBtn.classList.add("shake");
-}
-
-
-function generatePassword() {
-  const length = Number(lengthSlider.value);
-  const activeOptions = getActiveOptions();
-
-  if (activeOptions.length === 0) {
-    showError("Select at least one character type to cut a key.");
-    return;
+  for (let i = 0; i < length; i++) {
+    const categoryId = categoryIds[randomIndex(categoryIds.length)];
+    chars.push(randomChar(CATEGORY_POOLS[categoryId]));
   }
 
-  if (!length || length < activeOptions.length) {
-    showError(`Length must be at least ${activeOptions.length} for the selected options.`);
-    return;
-  }
-
-  clearError();
-
-  const activeCharsets = activeOptions.map((opt) => CHAR_SETS[opt]);
-  const combinedCharset = activeCharsets.join("");
-
-  const passwordChars = activeCharsets.map((set) => pickRandomChar(set));
-
-  for (let i = passwordChars.length; i < length; i++) {
-    passwordChars.push(pickRandomChar(combinedCharset));
-  }
-
-  secureShuffle(passwordChars);
-  currentPassword = passwordChars.join("");
-
-  passwordText.textContent = currentPassword;
-  passwordText.classList.remove("placeholder");
-  updateGauge(currentPassword, activeOptions, combinedCharset.length);
+  ensureAllCategoriesPresent(chars, categoryIds);
+  return chars.join("");
 }
 
+// If any selected category never got picked (possible with pure
+// randomness on short passwords), force one in at a random slot.
+function ensureAllCategoriesPresent(chars, categoryIds) {
+  categoryIds.forEach((categoryId) => {
+    const pool = CATEGORY_POOLS[categoryId];
+    const alreadyPresent = chars.some((c) => pool.includes(c));
+    if (!alreadyPresent) {
+      const slot = randomIndex(chars.length);
+      chars[slot] = randomChar(pool);
+    }
+  });
+}
 
-function updateGauge(password, activeOptions, poolSize) {
-  const entropy = password.length * Math.log2(Math.max(poolSize, 2));
-  const score = Math.max(0, Math.min(1, (entropy - 28) / (90 - 28)));
+// --- Validation ---
+function validate(length, categoryIds) {
+  if (categoryIds.length === 0) {
+    return "Pick at least one character type.";
+  }
+  if (length < categoryIds.length) {
+    return `Length needs to be at least ${categoryIds.length} for the types you picked.`;
+  }
+  return null;
+}
 
-  const angle = -90 + score * 180;
-  gaugeNeedle.style.transform = `rotate(${angle}deg)`;
+function flagError(message) {
+  el.warnMsg.textContent = message;
+  el.buildBtn.classList.remove("rattle");
+  void el.buildBtn.offsetWidth;
+  el.buildBtn.classList.add("rattle");
+}
 
-  const circumference = 188;
-  gaugeArc.style.strokeDashoffset = String(circumference * (1 - score));
+function clearFlag() {
+  el.warnMsg.textContent = "";
+}
+
+// --- Strength meter ---
+function scoreStrength(password, categoryIds) {
+  const poolSize = categoryIds.reduce((sum, id) => sum + CATEGORY_POOLS[id].length, 0);
+  const bits = password.length * Math.log2(Math.max(poolSize, 2));
+  return Math.max(0, Math.min(1, (bits - 30) / (85 - 30)));
+}
+
+function paintMeter(score) {
+  el.meterBar.style.width = `${Math.round(score * 100)}%`;
 
   let label = "Weak";
-  let color = "#C4634B";
+  let color = "var(--bad)";
   if (score > 0.75) {
     label = "Strong";
-    color = "#7FB57A";
+    color = "var(--good)";
   } else if (score > 0.4) {
-    label = "Fair";
-    color = "#C9A227";
+    label = "Okay";
+    color = "var(--gold)";
   }
-  gaugeLabel.textContent = label;
-  gaugeArc.setAttribute("stroke", color);
+  el.meterBar.style.background = color;
+  el.meterText.textContent = label;
 }
 
-
-copyBtn.addEventListener("click", async () => {
-  if (!currentPassword) return;
-
-  try {
-    await navigator.clipboard.writeText(currentPassword);
-  } catch (err) {
-    const tempInput = document.createElement("textarea");
-    tempInput.value = currentPassword;
-    document.body.appendChild(tempInput);
-    tempInput.select();
-    document.execCommand("copy");
-    document.body.removeChild(tempInput);
-  }
-
-  copyToast.classList.add("show");
-  setTimeout(() => copyToast.classList.remove("show"), 1200);
+// --- Event wiring ---
+el.lenInput.addEventListener("input", () => {
+  el.lenDisplay.textContent = el.lenInput.value;
 });
 
+el.buildBtn.addEventListener("click", () => {
+  const length = Number(el.lenInput.value);
+  const categoryIds = activeCategoryIds();
 
-generateBtn.addEventListener("click", generatePassword);
+  const problem = validate(length, categoryIds);
+  if (problem) {
+    flagError(problem);
+    return;
+  }
+  clearFlag();
 
+  lastPassword = buildPassword(length, categoryIds);
+  el.output.textContent = lastPassword;
 
-passwordText.classList.add("placeholder");
+  paintMeter(scoreStrength(lastPassword, categoryIds));
+});
+
+el.copyBtn.addEventListener("click", async () => {
+  if (!lastPassword) return;
+
+  try {
+    await navigator.clipboard.writeText(lastPassword);
+  } catch (err) {
+    const holder = document.createElement("textarea");
+    holder.value = lastPassword;
+    document.body.appendChild(holder);
+    holder.select();
+    document.execCommand("copy");
+    document.body.removeChild(holder);
+  }
+
+  el.copyMsg.textContent = "Copied to clipboard";
+  setTimeout(() => {
+    el.copyMsg.textContent = "";
+  }, 1400);
+});
