@@ -22,15 +22,10 @@ Keystone generates random passwords based on user-defined criteria. Users can ad
 No frameworks or build tools are used — the project runs entirely with static HTML, CSS, and JS.
 
 ## Steps to Run the Project
-: Run with a local server 
-1. Clone the repository:
-   bash
-   git clone https://github.com/yourusername/keystone.git
-   cd keystone
-2. Open the folder in VS Code (or Google Antigravity).
-3. Install the **Live Server** extension.
-4. Right-click `index.html` → **Open with Live Server**.
-5. The app will open at `http://127.0.0.1:5500` (or similar).
+: Open directly in a browser
+1. Clone or download this repository.
+2. Open the project folder.
+3. Double-click `index.html` to open it in your browser.
 
 ## How It Works
 
